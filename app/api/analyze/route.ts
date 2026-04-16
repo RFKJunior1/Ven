@@ -6,12 +6,18 @@ import type { PersonaReaction } from "@/components/ResultsDashboard";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-function buildPersonaBlock(personaSlice: typeof personas): string {
-  return personaSlice
+type ValidMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+const VALID_TYPES: ValidMediaType[] = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+interface ImageData {
+  base64: string;
+  mediaType: ValidMediaType;
+}
+
+function buildPersonaBlock(slice: typeof personas): string {
+  return slice
     .map((p) => {
       const traitLines = Object.entries(p.traits)
         .map(([k, v]) => `    ${k}: ${v}`)
@@ -26,63 +32,60 @@ ${traitLines}`;
     .join("\n\n");
 }
 
-function buildPrompt(personaSlice: typeof personas): string {
-  const personaBlock = buildPersonaBlock(personaSlice);
-  return `You are simulating the authentic, unfiltered reactions of real people to two out-of-home advertisements (Ad A and Ad B).
+function buildPrompt(slice: typeof personas, numAds: number): string {
+  const adLabels = Array.from({ length: numAds }, (_, i) => `Ad ${i + 1}`).join(", ");
+  const reactionsTemplate = Array.from(
+    { length: numAds },
+    (_, i) =>
+      `    { "reaction": "<first-person gut reaction to Ad ${i + 1} in 1-2 vivid sentences>", "resonance": <0-100>, "wouldConvert": <bool>, "lingering": <bool> }`
+  ).join(",\n");
 
-For each of the following ${personaSlice.length} people, based on their SPECIFIC traits, psychology, background, and life context, provide their genuine gut reaction to each ad.
+  return `You are simulating the authentic, unfiltered reactions of real people to ${numAds} out-of-home advertisement${numAds > 1 ? "s" : ""} (${adLabels}).
 
-${personaBlock}
+For each of the following ${slice.length} people, based on their SPECIFIC traits, psychology, background, and life context, provide their genuine gut reaction to each ad.
+
+${buildPersonaBlock(slice)}
 
 For EACH persona, respond with a JSON object with EXACTLY these fields:
 {
   "personaId": <number>,
-  "reactionA": "<their gut reaction to Ad A in 1-2 vivid sentences - first person, unfiltered>",
-  "reactionB": "<their gut reaction to Ad B in 1-2 vivid sentences - first person, unfiltered>",
-  "resonanceA": <integer 0-100, how much Ad A resonated with this specific person>,
-  "resonanceB": <integer 0-100, how much Ad B resonated with this specific person>,
-  "wouldConvertA": <true/false, would this person act on Ad A's call to action>,
-  "wouldConvertB": <true/false, would this person act on Ad B's call to action>,
-  "lingeringA": <true/false, would they still be thinking about Ad A hours later>,
-  "lingeringB": <true/false, would they still be thinking about Ad B hours later>,
-  "philosophicalTake": "<one sentence on what this ad reveals about the society or culture that created it, from this person's perspective>"
+  "reactions": [
+${reactionsTemplate}
+  ],
+  "philosophicalTake": "<one sentence on what ${numAds > 1 ? "these ads reveal" : "this ad reveals"} about society from this person's perspective>"
 }
 
-Return a JSON array of exactly ${personaSlice.length} objects, one per persona, in the same order as listed above.
+Return a JSON array of exactly ${slice.length} objects, one per persona, in the same order listed above.
 Respond ONLY with valid JSON — no markdown, no commentary, no code fences.`;
 }
 
 export async function POST(request: NextRequest) {
-  let imageABase64: string;
-  let imageBBase64: string;
-  let imageAMediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-  let imageBMediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  let images: ImageData[];
 
   try {
     const formData = await request.formData();
-    const imageAFile = formData.get("imageA") as File | null;
-    const imageBFile = formData.get("imageB") as File | null;
+    const collected: ImageData[] = [];
 
-    if (!imageAFile || !imageBFile) {
-      return new Response(JSON.stringify({ error: "Both images are required" }), {
+    for (let i = 0; i < 6; i++) {
+      const file = formData.get(`image${i}`) as File | null;
+      if (!file) break;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      collected.push({
+        base64: buffer.toString("base64"),
+        mediaType: VALID_TYPES.includes(file.type as ValidMediaType)
+          ? (file.type as ValidMediaType)
+          : "image/jpeg",
+      });
+    }
+
+    if (collected.length === 0) {
+      return new Response(JSON.stringify({ error: "At least one image is required" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const imageABuffer = Buffer.from(await imageAFile.arrayBuffer());
-    const imageBBuffer = Buffer.from(await imageBFile.arrayBuffer());
-
-    imageABase64 = imageABuffer.toString("base64");
-    imageBBase64 = imageBBuffer.toString("base64");
-
-    const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    imageAMediaType = validTypes.includes(imageAFile.type)
-      ? (imageAFile.type as typeof imageAMediaType)
-      : "image/jpeg";
-    imageBMediaType = validTypes.includes(imageBFile.type)
-      ? (imageBFile.type as typeof imageBMediaType)
-      : "image/jpeg";
+    images = collected;
   } catch {
     return new Response(JSON.stringify({ error: "Failed to parse form data" }), {
       status: 400,
@@ -90,6 +93,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const numAds = images.length;
   const BATCH_SIZE = 10;
   const batches: (typeof personas)[] = [];
   for (let i = 0; i < personas.length; i += BATCH_SIZE) {
@@ -103,7 +107,15 @@ export async function POST(request: NextRequest) {
       try {
         for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
           const batch = batches[batchIndex];
-          const prompt = buildPrompt(batch);
+          const prompt = buildPrompt(batch, numAds);
+
+          const imageContent = images.flatMap((img, i) => [
+            {
+              type: "image" as const,
+              source: { type: "base64" as const, media_type: img.mediaType, data: img.base64 },
+            },
+            { type: "text" as const, text: `This is Ad ${i + 1}.` },
+          ]);
 
           let rawText = "";
           try {
@@ -121,60 +133,25 @@ export async function POST(request: NextRequest) {
               messages: [
                 {
                   role: "user",
-                  content: [
-                    {
-                      type: "image",
-                      source: {
-                        type: "base64",
-                        media_type: imageAMediaType,
-                        data: imageABase64,
-                      },
-                    },
-                    {
-                      type: "text",
-                      text: "This is Ad A (the first out-of-home advertisement).",
-                    },
-                    {
-                      type: "image",
-                      source: {
-                        type: "base64",
-                        media_type: imageBMediaType,
-                        data: imageBBase64,
-                      },
-                    },
-                    {
-                      type: "text",
-                      text: "This is Ad B (the second out-of-home advertisement).",
-                    },
-                    {
-                      type: "text",
-                      text: prompt,
-                    },
-                  ],
+                  content: [...imageContent, { type: "text" as const, text: prompt }],
                 },
               ],
             });
 
             const content = response.content[0];
-            if (content.type === "text") {
-              rawText = content.text.trim();
-            }
+            if (content.type === "text") rawText = content.text.trim();
           } catch (apiError) {
             console.error(`Batch ${batchIndex} API error:`, apiError);
-            // Send error for this batch and continue
-            const errorLine = JSON.stringify({
-              batch: batchIndex,
-              error: `Batch ${batchIndex} failed`,
-              results: [],
-            });
-            controller.enqueue(encoder.encode(errorLine + "\n"));
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({ batch: batchIndex, error: `Batch ${batchIndex} failed`, results: [] }) + "\n"
+              )
+            );
             continue;
           }
 
-          // Parse the JSON response
           let results: PersonaReaction[] = [];
           try {
-            // Strip any accidental markdown fences
             const cleaned = rawText
               .replace(/^```json\s*/i, "")
               .replace(/^```\s*/i, "")
@@ -184,16 +161,13 @@ export async function POST(request: NextRequest) {
             results = Array.isArray(parsed) ? parsed : [];
           } catch (parseError) {
             console.error(`Batch ${batchIndex} parse error:`, parseError, rawText.slice(0, 200));
-            results = [];
           }
 
-          const line = JSON.stringify({ batch: batchIndex, results });
-          controller.enqueue(encoder.encode(line + "\n"));
+          controller.enqueue(encoder.encode(JSON.stringify({ batch: batchIndex, results }) + "\n"));
         }
       } catch (err) {
         console.error("Stream error:", err);
-        const errorLine = JSON.stringify({ error: "Analysis failed", results: [] });
-        controller.enqueue(encoder.encode(errorLine + "\n"));
+        controller.enqueue(encoder.encode(JSON.stringify({ error: "Analysis failed", results: [] }) + "\n"));
       } finally {
         controller.close();
       }

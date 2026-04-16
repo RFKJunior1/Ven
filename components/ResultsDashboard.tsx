@@ -1,18 +1,19 @@
 "use client";
 
 import PersonaCard from "./PersonaCard";
+import { CREATIVE_COLORS } from "./DropZone";
 import type { Persona } from "@/data/personas";
+
+export interface CreativeReaction {
+  reaction: string;
+  resonance: number;
+  wouldConvert: boolean;
+  lingering: boolean;
+}
 
 export interface PersonaReaction {
   personaId: number;
-  reactionA: string;
-  reactionB: string;
-  resonanceA: number;
-  resonanceB: number;
-  wouldConvertA: boolean;
-  wouldConvertB: boolean;
-  lingeringA: boolean;
-  lingeringB: boolean;
+  reactions: CreativeReaction[];
   philosophicalTake: string;
 }
 
@@ -21,65 +22,7 @@ interface ResultsDashboardProps {
   reactions: Map<number, PersonaReaction>;
   isAnalyzing: boolean;
   progress: number;
-}
-
-function StatCard({
-  label,
-  valueA,
-  valueB,
-  format,
-}: {
-  label: string;
-  valueA: number;
-  valueB: number;
-  format: "number" | "percent";
-}) {
-  const fmtA = format === "percent" ? `${valueA.toFixed(0)}%` : valueA.toFixed(1);
-  const fmtB = format === "percent" ? `${valueB.toFixed(0)}%` : valueB.toFixed(1);
-
-  return (
-    <div
-      className="rounded-xl p-5 flex flex-col gap-3"
-      style={{ background: "#16161A", border: "1px solid #1E1E24" }}
-    >
-      <p className="text-xs font-medium tracking-widest uppercase" style={{ color: "#6B6B7E" }}>
-        {label}
-      </p>
-      <div className="flex items-end gap-4">
-        <div className="flex flex-col">
-          <span className="text-xs font-bold tracking-wider" style={{ color: "#C8102E" }}>
-            A
-          </span>
-          <span className="text-2xl font-bold text-vendetta-text">{fmtA}</span>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs font-bold tracking-wider" style={{ color: "#B8963E" }}>
-            B
-          </span>
-          <span className="text-2xl font-bold text-vendetta-text">{fmtB}</span>
-        </div>
-      </div>
-      {/* Comparison bar */}
-      <div className="flex items-center gap-1 h-1.5">
-        <div
-          className="h-full rounded-full"
-          style={{
-            background: "#C8102E",
-            width: `${(valueA / (valueA + valueB + 0.001)) * 100}%`,
-            transition: "width 0.8s ease-out",
-          }}
-        />
-        <div
-          className="h-full rounded-full"
-          style={{
-            background: "#B8963E",
-            width: `${(valueB / (valueA + valueB + 0.001)) * 100}%`,
-            transition: "width 0.8s ease-out",
-          }}
-        />
-      </div>
-    </div>
-  );
+  numCreatives: number;
 }
 
 export default function ResultsDashboard({
@@ -87,52 +30,36 @@ export default function ResultsDashboard({
   reactions,
   isAnalyzing,
   progress,
+  numCreatives,
 }: ResultsDashboardProps) {
-  const reactionValues = Array.from(reactions.values());
-  const count = reactionValues.length;
+  const values = Array.from(reactions.values());
+  const count = values.length;
 
-  const avgResonanceA =
-    count > 0
-      ? reactionValues.reduce((s, r) => s + r.resonanceA, 0) / count
-      : 0;
-  const avgResonanceB =
-    count > 0
-      ? reactionValues.reduce((s, r) => s + r.resonanceB, 0) / count
-      : 0;
-  const pctConvertA =
-    count > 0
-      ? (reactionValues.filter((r) => r.wouldConvertA).length / count) * 100
-      : 0;
-  const pctConvertB =
-    count > 0
-      ? (reactionValues.filter((r) => r.wouldConvertB).length / count) * 100
-      : 0;
-  const pctLingerA =
-    count > 0
-      ? (reactionValues.filter((r) => r.lingeringA).length / count) * 100
-      : 0;
-  const pctLingerB =
-    count > 0
-      ? (reactionValues.filter((r) => r.lingeringB).length / count) * 100
-      : 0;
+  const stats = Array.from({ length: numCreatives }, (_, i) => {
+    const avgRes = count > 0 ? values.reduce((s, r) => s + (r.reactions[i]?.resonance ?? 0), 0) / count : 0;
+    const pctConv = count > 0 ? (values.filter((r) => r.reactions[i]?.wouldConvert).length / count) * 100 : 0;
+    const pctLing = count > 0 ? (values.filter((r) => r.reactions[i]?.lingering).length / count) * 100 : 0;
+    return { avgRes, pctConv, pctLing };
+  });
+
+  const maxRes = Math.max(...stats.map((s) => s.avgRes), 1);
+  const maxConv = Math.max(...stats.map((s) => s.pctConv), 1);
+  const maxLing = Math.max(...stats.map((s) => s.pctLing), 1);
 
   return (
-    <div className="w-full flex flex-col gap-8">
+    <div className="w-full flex flex-col gap-10">
       {/* Progress */}
       {isAnalyzing && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-vendetta-text">
-              Simulating 100 minds...
+            <p className="text-xs font-medium tracking-widest uppercase" style={{ color: "#6B6B7E" }}>
+              Simulating 100 minds
             </p>
-            <p className="text-sm font-mono" style={{ color: "#6B6B7E" }}>
+            <p className="text-xs font-mono" style={{ color: "#6B6B7E" }}>
               {count} / 100
             </p>
           </div>
-          <div
-            className="w-full rounded-full overflow-hidden"
-            style={{ background: "#1E1E24", height: "6px" }}
-          >
+          <div className="w-full rounded-full overflow-hidden" style={{ background: "#1E1E24", height: "2px" }}>
             <div
               style={{
                 width: `${progress}%`,
@@ -143,40 +70,58 @@ export default function ResultsDashboard({
               }}
             />
           </div>
-          <p className="text-xs text-center" style={{ color: "#6B6B7E" }}>
-            Each persona is processing both creatives through their unique psychology
-          </p>
         </div>
       )}
 
-      {/* Aggregate Stats */}
+      {/* Aggregate */}
       {count > 0 && (
         <div>
-          <h2
-            className="text-xs font-bold tracking-widest uppercase mb-4"
-            style={{ color: "#6B6B7E" }}
-          >
-            Aggregate Intelligence
-          </h2>
+          <p className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: "#6B6B7E" }}>
+            Aggregate
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard
-              label="Avg Resonance"
-              valueA={avgResonanceA}
-              valueB={avgResonanceB}
-              format="number"
-            />
-            <StatCard
-              label="Would Convert"
-              valueA={pctConvertA}
-              valueB={pctConvertB}
-              format="percent"
-            />
-            <StatCard
-              label="Lingering Impact"
-              valueA={pctLingerA}
-              valueB={pctLingerB}
-              format="percent"
-            />
+            {[
+              { label: "Resonance", values: stats.map((s) => s.avgRes), max: maxRes, fmt: (v: number) => v.toFixed(1) },
+              { label: "Convert", values: stats.map((s) => s.pctConv), max: maxConv, fmt: (v: number) => `${v.toFixed(0)}%` },
+              { label: "Lingers", values: stats.map((s) => s.pctLing), max: maxLing, fmt: (v: number) => `${v.toFixed(0)}%` },
+            ].map((card) => (
+              <div
+                key={card.label}
+                className="rounded-xl p-5 flex flex-col gap-3"
+                style={{ background: "#16161A", border: "1px solid #1E1E24" }}
+              >
+                <p className="text-xs font-bold tracking-widest uppercase" style={{ color: "#6B6B7E" }}>
+                  {card.label}
+                </p>
+                <div className="flex flex-col gap-2.5">
+                  {card.values.map((v, i) => {
+                    const color = CREATIVE_COLORS[i] ?? CREATIVE_COLORS[0];
+                    const label = String(i + 1).padStart(2, "0");
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs font-bold w-5 flex-shrink-0" style={{ color }}>
+                          {label}
+                        </span>
+                        <div className="flex-1 rounded-full overflow-hidden" style={{ background: "#1E1E24", height: "4px" }}>
+                          <div
+                            style={{
+                              width: `${(v / card.max) * 100}%`,
+                              background: color,
+                              height: "100%",
+                              borderRadius: "9999px",
+                              transition: "width 0.8s ease-out",
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs font-mono w-10 text-right" style={{ color: "#6B6B7E" }}>
+                          {card.fmt(v)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -184,30 +129,21 @@ export default function ResultsDashboard({
       {/* Persona Grid */}
       {(isAnalyzing || count > 0) && (
         <div>
-          <h2
-            className="text-xs font-bold tracking-widest uppercase mb-4"
-            style={{ color: "#6B6B7E" }}
-          >
+          <p className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: "#6B6B7E" }}>
             100 Minds
-          </h2>
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {personas.map((persona) => {
-              const reaction = reactions.get(persona.id);
+              const r = reactions.get(persona.id);
+              const personaReactions = Array.from({ length: numCreatives }, (_, i) =>
+                r?.reactions[i] ?? null
+              );
               return (
                 <PersonaCard
                   key={persona.id}
                   persona={persona}
-                  reactionA={reaction?.reactionA ?? null}
-                  reactionB={reaction?.reactionB ?? null}
-                  scores={{
-                    resonanceA: reaction?.resonanceA ?? 0,
-                    resonanceB: reaction?.resonanceB ?? 0,
-                    wouldConvertA: reaction?.wouldConvertA ?? false,
-                    wouldConvertB: reaction?.wouldConvertB ?? false,
-                    lingeringA: reaction?.lingeringA ?? false,
-                    lingeringB: reaction?.lingeringB ?? false,
-                  }}
-                  isLoading={isAnalyzing && !reaction}
+                  reactions={personaReactions}
+                  isLoading={isAnalyzing && !r}
                 />
               );
             })}

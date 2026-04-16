@@ -1,21 +1,12 @@
 "use client";
 
 import type { Persona } from "@/data/personas";
-
-interface PersonaScores {
-  resonanceA: number;
-  resonanceB: number;
-  wouldConvertA: boolean;
-  wouldConvertB: boolean;
-  lingeringA: boolean;
-  lingeringB: boolean;
-}
+import { CREATIVE_COLORS } from "./DropZone";
+import type { CreativeReaction } from "./ResultsDashboard";
 
 interface PersonaCardProps {
   persona: Persona;
-  reactionA: string | null;
-  reactionB: string | null;
-  scores: PersonaScores;
+  reactions: (CreativeReaction | null)[];
   isLoading: boolean;
 }
 
@@ -24,7 +15,7 @@ function ScoreBar({ value, color }: { value: number; color: string }) {
     <div className="flex items-center gap-2">
       <div
         className="flex-1 rounded-full overflow-hidden"
-        style={{ background: "#1E1E24", height: "4px" }}
+        style={{ background: "#1E1E24", height: "3px" }}
       >
         <div
           style={{
@@ -36,43 +27,15 @@ function ScoreBar({ value, color }: { value: number; color: string }) {
           }}
         />
       </div>
-      <span className="text-xs font-mono" style={{ color: "#6B6B7E", minWidth: "2.5rem" }}>
+      <span className="text-xs font-mono" style={{ color: "#6B6B7E", minWidth: "2rem" }}>
         {value}
       </span>
     </div>
   );
 }
 
-function Indicator({
-  active,
-  label,
-  color,
-}: {
-  active: boolean;
-  label: string;
-  color: string;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <div
-        className="w-2 h-2 rounded-full flex-shrink-0"
-        style={{ background: active ? color : "#2A2A32" }}
-      />
-      <span className="text-xs" style={{ color: active ? "#E8E8F0" : "#6B6B7E" }}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
-export default function PersonaCard({
-  persona,
-  reactionA,
-  reactionB,
-  scores,
-  isLoading,
-}: PersonaCardProps) {
-  const hasData = reactionA !== null || reactionB !== null;
+export default function PersonaCard({ persona, reactions, isLoading }: PersonaCardProps) {
+  const hasData = reactions.some((r) => r !== null);
 
   return (
     <div
@@ -80,7 +43,7 @@ export default function PersonaCard({
       style={{
         background: "#16161A",
         border: `1px solid ${hasData ? "#1E1E24" : "#16161A"}`,
-        opacity: isLoading && !hasData ? 0.5 : 1,
+        opacity: isLoading && !hasData ? 0.4 : 1,
       }}
     >
       {/* Header */}
@@ -96,106 +59,64 @@ export default function PersonaCard({
         </div>
         <span
           className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
-          style={{ background: "#1E1E24", color: "#6B6B7E" }}
+          style={{ background: "#111114", color: "#2A2A32" }}
         >
           #{persona.id}
         </span>
       </div>
 
-      {/* Loading skeleton */}
       {isLoading && !hasData && (
         <div className="flex flex-col gap-2 animate-pulse">
-          <div className="h-3 rounded" style={{ background: "#1E1E24", width: "90%" }} />
-          <div className="h-3 rounded" style={{ background: "#1E1E24", width: "70%" }} />
-          <div className="h-3 rounded" style={{ background: "#1E1E24", width: "80%" }} />
+          <div className="h-2.5 rounded" style={{ background: "#1E1E24", width: "85%" }} />
+          <div className="h-2.5 rounded" style={{ background: "#1E1E24", width: "65%" }} />
         </div>
       )}
 
-      {/* Reactions */}
       {hasData && (
         <div className="flex flex-col gap-3">
-          {/* Ad A reaction */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <span
-                className="text-xs font-bold tracking-wider"
-                style={{ color: "#C8102E" }}
-              >
-                A
-              </span>
-              <div className="flex-1" style={{ borderTop: "1px solid #1E1E24" }} />
-            </div>
-            {reactionA ? (
-              <p className="text-xs leading-relaxed" style={{ color: "#A8A8B8" }}>
-                {reactionA}
-              </p>
-            ) : (
-              <p className="text-xs italic" style={{ color: "#6B6B7E" }}>
-                Pending...
-              </p>
-            )}
-            <div className="mt-2">
-              <ScoreBar value={scores.resonanceA} color="#C8102E" />
-            </div>
-            <div className="flex gap-3 mt-1.5">
-              <Indicator
-                active={scores.wouldConvertA}
-                label="Convert"
-                color="#C8102E"
-              />
-              <Indicator
-                active={scores.lingeringA}
-                label="Lingers"
-                color="#C8102E"
-              />
-            </div>
-          </div>
-
-          {/* Ad B reaction */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <span
-                className="text-xs font-bold tracking-wider"
-                style={{ color: "#B8963E" }}
-              >
-                B
-              </span>
-              <div className="flex-1" style={{ borderTop: "1px solid #1E1E24" }} />
-            </div>
-            {reactionB ? (
-              <p className="text-xs leading-relaxed" style={{ color: "#A8A8B8" }}>
-                {reactionB}
-              </p>
-            ) : (
-              <p className="text-xs italic" style={{ color: "#6B6B7E" }}>
-                Pending...
-              </p>
-            )}
-            <div className="mt-2">
-              <ScoreBar value={scores.resonanceB} color="#B8963E" />
-            </div>
-            <div className="flex gap-3 mt-1.5">
-              <Indicator
-                active={scores.wouldConvertB}
-                label="Convert"
-                color="#B8963E"
-              />
-              <Indicator
-                active={scores.lingeringB}
-                label="Lingers"
-                color="#B8963E"
-              />
-            </div>
-          </div>
+          {reactions.map((r, i) => {
+            const color = CREATIVE_COLORS[i] ?? CREATIVE_COLORS[0];
+            const label = String(i + 1).padStart(2, "0");
+            return (
+              <div key={i}>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-xs font-bold tracking-wider" style={{ color }}>
+                    {label}
+                  </span>
+                  <div className="flex-1" style={{ borderTop: "1px solid #1E1E24" }} />
+                  {r && (
+                    <div className="flex gap-2">
+                      {r.wouldConvert && (
+                        <span className="text-xs" style={{ color }}>convert</span>
+                      )}
+                      {r.lingering && (
+                        <span className="text-xs" style={{ color }}>lingers</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {r ? (
+                  <>
+                    <p
+                      className="text-xs leading-relaxed"
+                      style={{ color: "#A8A8B8", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}
+                    >
+                      {r.reaction}
+                    </p>
+                    <div className="mt-1.5">
+                      <ScoreBar value={r.resonance} color={color} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs italic" style={{ color: "#2A2A32" }}>
+                    pending...
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
-
-      {/* Income badge */}
-      <div className="flex items-center justify-end">
-        <span className="text-xs" style={{ color: "#2A2A32" }}>
-          {persona.income}
-        </span>
-      </div>
     </div>
   );
 }
